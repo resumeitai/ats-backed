@@ -29,3 +29,4 @@ flake8
 gunicorn
 whitenoise
 dj-database-url
+python-dotenv
