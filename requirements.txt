@@ -30,3 +30,4 @@ gunicorn
 whitenoise
 dj-database-url
 python-dotenv
+drf-yasg
