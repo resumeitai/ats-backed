@@ -10,10 +10,20 @@ class UserSerializer(serializers.ModelSerializer):
     """
     Serializer for the User model.
     """
+    is_subscribed = serializers.ReadOnlyField()  # Uses the model property
+    subscription_status = serializers.SerializerMethodField()
+    
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'full_name', 'phone_number', 'role', 'is_verified', 'created_at')
-        read_only_fields = ('id', 'role', 'is_verified', 'created_at')
+        fields = ('id', 'username', 'email', 'full_name', 'phone_number', 'role', 
+                 'is_verified', 'is_subscribed', 'subscription_status', 'created_at')
+        read_only_fields = ('id', 'role', 'is_verified', 'is_subscribed', 'subscription_status', 'created_at')
+    
+    def get_subscription_status(self, obj):
+        """
+        Get detailed subscription status using the model method.
+        """
+        return obj.get_subscription_status()
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
