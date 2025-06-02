@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.utils.translation import gettext_lazy as _
+from django.utils import timezone
 
 
 class User(AbstractUser):
@@ -26,6 +27,58 @@ class User(AbstractUser):
     
     def __str__(self):
         return self.username
+    
+    @property
+    def is_subscribed(self):
+        """
+        Check if user has an active subscription.
+        This is a property method that can be called like user.is_subscribed
+        """
+        return self.subscriptions.filter(
+            status='active',
+            end_date__gte=timezone.now().date()
+        ).exists()
+    
+    @property
+    def current_subscription(self):
+        """
+        Get the user's current active subscription.
+        Returns None if no active subscription exists.
+        """
+        return self.subscriptions.filter(
+            status='active',
+            end_date__gte=timezone.now().date()
+        ).first()
+    
+    def get_subscription_status(self):
+        """
+        Get detailed subscription status information.
+        Returns a dictionary with subscription details.
+        """
+        current_sub = self.current_subscription
+        
+        if current_sub:
+            return {
+                'is_subscribed': True,
+                'subscription_id': current_sub.id,
+                'plan_name': current_sub.plan.name,
+                'status': current_sub.status,
+                'start_date': current_sub.start_date,
+                'end_date': current_sub.end_date,
+                'days_remaining': (current_sub.end_date - timezone.now().date()).days if current_sub.end_date else 0,
+                'is_auto_renew': current_sub.is_auto_renew
+            }
+        
+        return {
+            'is_subscribed': False,
+            'subscription_id': None,
+            'plan_name': None,
+            'status': None,
+            'start_date': None,
+            'end_date': None,
+            'days_remaining': 0,
+            'is_auto_renew': False
+        }
 
 
 class UserActivity(models.Model):
