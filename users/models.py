@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
+import uuid
 
 
 class User(AbstractUser):
@@ -18,6 +19,7 @@ class User(AbstractUser):
     role = models.CharField(_('Role'), max_length=10, choices=ROLE_CHOICES, default='user')
     is_verified = models.BooleanField(_('Email Verified'), default=False)
     phone_number = models.CharField(_('Phone Number'), max_length=15, blank=True)
+    email_verification_token = models.UUIDField(_('Email Verification Token'), default=uuid.uuid4,blank=True)
     created_at = models.DateTimeField(_('Created At'), auto_now_add=True)
     updated_at = models.DateTimeField(_('Updated At'), auto_now=True)
     
@@ -104,7 +106,7 @@ class Referral(models.Model):
     Model to track referrals for the referral program.
     """
     referrer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='referrals_made')
-    referred = models.ForeignKey(User, on_delete=models.CASCADE, related_name='referred_by')
+    referred = models.ForeignKey(User, on_delete=models.CASCADE, related_name='referred_by', null=True, blank=True)
     code = models.CharField(_('Referral Code'), max_length=20, unique=True)
     is_successful = models.BooleanField(_('Is Successful'), default=False)
     created_at = models.DateTimeField(_('Created At'), auto_now_add=True)
@@ -114,4 +116,5 @@ class Referral(models.Model):
         verbose_name_plural = _('Referrals')
     
     def __str__(self):
-        return f"{self.referrer.username} referred {self.referred.username}"
+        referred_user = self.referred.username if self.referred else "Not yet registered"
+        return f"{self.referrer.username} referred {referred_user}"

@@ -30,3 +30,11 @@ class IsOwnerOrAdmin(permissions.BasePermission):
             return obj == request.user
             
         return False
+
+
+class IsVerifiedUser(permissions.BasePermission):
+    """
+    Custom permission to only allow verified users to access the view.
+    """
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated and request.user.is_verified

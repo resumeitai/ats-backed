@@ -10,7 +10,7 @@ class UserSerializer(serializers.ModelSerializer):
     """
     Serializer for the User model.
     """
-    is_subscribed = serializers.ReadOnlyField()  # Uses the model property
+    is_subscribed = serializers.ReadOnlyField()  
     subscription_status = serializers.SerializerMethodField()
     
     class Meta:
@@ -46,6 +46,34 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         validated_data.pop('password2')
         user = User.objects.create_user(**validated_data)
         return user
+
+
+class EmailVerificationSerializer(serializers.Serializer):
+    """
+    Serializer for email verification.
+    """
+    token = serializers.UUIDField()
+
+    def validate_token(self, value):
+        try:
+            user = User.objects.get(email_verification_token=value, is_verified=False)
+            return value
+        except User.DoesNotExist:
+            raise serializers.ValidationError("Invalid or expired verification token.")
+
+
+class ResendVerificationSerializer(serializers.Serializer):
+    """
+    Serializer for resending email verification.
+    """
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        try:
+            user = User.objects.get(email=value, is_verified=False)
+            return value
+        except User.DoesNotExist:
+            raise serializers.ValidationError("User with this email not found or already verified.")
 
 
 class UserActivitySerializer(serializers.ModelSerializer):
@@ -87,10 +115,9 @@ class ReferralCreateSerializer(serializers.ModelSerializer):
         email = validated_data.pop('email')
         referrer = self.context['request'].user
         
-        # Create a new referral
         referral = Referral.objects.create(
             referrer=referrer,
-            referred=None,  # Will be set when the referred user registers
+            referred=None, 
             **validated_data
         )
         
