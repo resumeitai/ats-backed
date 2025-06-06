@@ -32,9 +32,12 @@ ALLOWED_HOSTS = [
     'localhost',
     '127.0.0.1',
     'ats-backed.onrender.com',
-    '.onrender.com',  # This allows any subdomain of onrender.com
-] + os.getenv('ALLOWED_HOSTS', '').split(',') if os.getenv('ALLOWED_HOSTS') else []
-# Application definition
+    '.onrender.com',  # allows all subdomains of onrender.com
+]
+
+if os.getenv('ALLOWED_HOSTS'):
+    ALLOWED_HOSTS += os.getenv('ALLOWED_HOSTS').split(',')
+
 
 INSTALLED_APPS = [
     'django.contrib.admin',
