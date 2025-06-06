@@ -1,20 +1,62 @@
 services:
   - type: web
-    name: pickle-django-app
-    env: python
-    plan: free
-    buildCommand: "./build.sh"
-    startCommand: "gunicorn pickle_business.wsgi:application"
+    name: resumeit-backend
+    runtime: python
+    buildCommand: |
+      pip install -r requirements.txt
+      python manage.py collectstatic --noinput
+      python manage.py migrate
+    startCommand: gunicorn resumeit.wsgi:application --bind 0.0.0.0:$PORT
     envVars:
-      - key: DJANGO_SECRET_KEY
-        value: your-secret-key
-      - key: DATABASE_URL
+      - key: DJANGO_SETTINGS_MODULE
+        value: resumeit.settings
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: False
+      - key: ALLOWED_HOSTS
+        value: your-custom-domain.onrender.com,localhost,127.0.0.1
+      - key: DB_NAME
         fromDatabase:
-          name: pickle-db
+          name: resumeit-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: resumeit-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: resumeit-db
+          property: password
+      - key: DB_HOST
+        fromDatabase:
+          name: resumeit-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: resumeit-db
+          property: port
+      - key: CORS_ALLOWED_ORIGINS
+        value: http://localhost:3000,https://your-frontend.onrender.com
+      - key: EMAIL_HOST_USER
+        value: klunewsapplication@gmail.com
+      - key: EMAIL_HOST_PASSWORD
+        value: jkjkfxoxqivmzdkq
+      - key: CELERY_BROKER
+        fromService:
+          type: redis
+          name: resumeit-redis
           property: connectionString
-      - key: CLOUDINARY_CLOUD_NAME
-        value: your-cloud-name
-      - key: CLOUDINARY_API_KEY
-        value: your-api-key
-      - key: CLOUDINARY_API_SECRET
-        value: your-api-secret
+      - key: CELERY_BACKEND
+        fromService:
+          type: redis
+          name: resumeit-redis
+          property: connectionString
+
+  - type: redis
+    name: resumeit-redis
+    ipAllowList: [] # Allow all by default (secure this in production)
+
+  - type: psql
+    name: resumeit-db
+    ipAllowList: [] # Allow all by default (secure this in production)
