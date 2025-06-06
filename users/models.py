@@ -3,6 +3,8 @@ from django.contrib.auth.models import AbstractUser
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
 import uuid
+import random
+import string
 
 
 class User(AbstractUser):
@@ -19,7 +21,12 @@ class User(AbstractUser):
     role = models.CharField(_('Role'), max_length=10, choices=ROLE_CHOICES, default='user')
     is_verified = models.BooleanField(_('Email Verified'), default=False)
     phone_number = models.CharField(_('Phone Number'), max_length=15, blank=True)
-    email_verification_token = models.UUIDField(_('Email Verification Token'), default=uuid.uuid4,blank=True)
+    
+    # OTP fields instead of token
+    email_otp = models.CharField(_('Email OTP'), max_length=6, blank=True, null=True)
+    otp_created_at = models.DateTimeField(_('OTP Created At'), blank=True, null=True)
+    otp_attempts = models.IntegerField(_('OTP Attempts'), default=0)
+    
     created_at = models.DateTimeField(_('Created At'), auto_now_add=True)
     updated_at = models.DateTimeField(_('Updated At'), auto_now=True)
     
@@ -29,6 +36,54 @@ class User(AbstractUser):
     
     def __str__(self):
         return self.username
+    
+    def generate_otp(self):
+        """
+        Generate a 6-digit OTP for email verification.
+        """
+        self.email_otp = ''.join(random.choices(string.digits, k=6))
+        self.otp_created_at = timezone.now()
+        self.otp_attempts = 0
+        self.save(update_fields=['email_otp', 'otp_created_at', 'otp_attempts'])
+        return self.email_otp
+    
+    def is_otp_valid(self, otp):
+        """
+        Check if the provided OTP is valid and not expired.
+        OTP expires after 10 minutes.
+        """
+        if not self.email_otp or not self.otp_created_at:
+            return False
+        
+        # Check if OTP has expired (10 minutes)
+        expiry_time = self.otp_created_at + timezone.timedelta(minutes=10)
+        if timezone.now() > expiry_time:
+            return False
+        
+        # Check if OTP matches
+        return self.email_otp == otp
+    
+    def increment_otp_attempts(self):
+        """
+        Increment OTP attempts counter.
+        """
+        self.otp_attempts += 1
+        self.save(update_fields=['otp_attempts'])
+    
+    def is_otp_attempts_exceeded(self):
+        """
+        Check if maximum OTP attempts (5) have been exceeded.
+        """
+        return self.otp_attempts >= 5
+    
+    def clear_otp(self):
+        """
+        Clear OTP data after successful verification or when generating new OTP.
+        """
+        self.email_otp = None
+        self.otp_created_at = None
+        self.otp_attempts = 0
+        self.save(update_fields=['email_otp', 'otp_created_at', 'otp_attempts'])
     
     @property
     def is_subscribed(self):

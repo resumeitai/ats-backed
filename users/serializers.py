@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+from django.utils import timezone
 from .models import UserActivity, Referral
 
 User = get_user_model()
@@ -48,29 +49,56 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return user
 
 
-class EmailVerificationSerializer(serializers.Serializer):
+class OTPVerificationSerializer(serializers.Serializer):
     """
-    Serializer for email verification.
+    Serializer for OTP verification.
     """
-    token = serializers.UUIDField()
+    email = serializers.EmailField()
+    otp = serializers.CharField(min_length=6, max_length=6)
 
-    def validate_token(self, value):
+    def validate(self, attrs):
+        email = attrs.get('email')
+        otp = attrs.get('otp')
+        
         try:
-            user = User.objects.get(email_verification_token=value, is_verified=False)
-            return value
+            user = User.objects.get(email=email, is_verified=False)
         except User.DoesNotExist:
-            raise serializers.ValidationError("Invalid or expired verification token.")
+            raise serializers.ValidationError("User with this email not found or already verified.")
+        
+        # Check if OTP attempts exceeded
+        if user.is_otp_attempts_exceeded():
+            raise serializers.ValidationError("Maximum OTP attempts exceeded. Please request a new OTP.")
+        
+        # Validate OTP
+        if not user.is_otp_valid(otp):
+            user.increment_otp_attempts()
+            remaining_attempts = 5 - user.otp_attempts
+            if remaining_attempts > 0:
+                raise serializers.ValidationError(f"Invalid or expired OTP. {remaining_attempts} attempts remaining.")
+            else:
+                raise serializers.ValidationError("Invalid or expired OTP. Maximum attempts exceeded.")
+        
+        attrs['user'] = user
+        return attrs
 
 
-class ResendVerificationSerializer(serializers.Serializer):
+class ResendOTPSerializer(serializers.Serializer):
     """
-    Serializer for resending email verification.
+    Serializer for resending OTP.
     """
     email = serializers.EmailField()
 
     def validate_email(self, value):
         try:
             user = User.objects.get(email=value, is_verified=False)
+            
+            # Check if user has exceeded OTP attempts and not enough time has passed
+            if user.is_otp_attempts_exceeded() and user.otp_created_at:
+                time_since_last_otp = timezone.now() - user.otp_created_at
+                if time_since_last_otp.seconds < 300:  # 5 minutes cooldown
+                    remaining_time = 300 - time_since_last_otp.seconds
+                    raise serializers.ValidationError(f"Please wait {remaining_time} seconds before requesting a new OTP.")
+            
             return value
         except User.DoesNotExist:
             raise serializers.ValidationError("User with this email not found or already verified.")

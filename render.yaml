@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: pickle-django-app
+    env: python
+    plan: free
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn pickle_business.wsgi:application"
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        value: your-secret-key
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pickle-db
+          property: connectionString
+      - key: CLOUDINARY_CLOUD_NAME
+        value: your-cloud-name
+      - key: CLOUDINARY_API_KEY
+        value: your-api-key
+      - key: CLOUDINARY_API_SECRET
+        value: your-api-secret

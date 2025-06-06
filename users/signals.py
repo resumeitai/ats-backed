@@ -10,20 +10,23 @@ User = get_user_model()
 
 
 @receiver(post_save, sender=User)
-def send_email_verification_on_registration(sender, instance, created, **kwargs):
+def send_otp_on_registration(sender, instance, created, **kwargs):
     """
-    Send email verification when a new user is registered.
+    Send OTP email when a new user is registered.
     """
     if created and instance.email:
-        verification_url = f"{settings.FRONTEND_URL}/verify-email/{instance.email_verification_token}/"
+        # Generate OTP for the new user
+        otp = instance.generate_otp()
         
-        subject = "Verify Your Email - ResumeIt"
+        subject = "Welcome to ResumeIt - Verify Your Email"
         message = f"""
         Hello {instance.full_name or instance.username},
         
-        Welcome to ResumeIt! Please verify your email address by clicking the link below:
+        Welcome to ResumeIt! To complete your registration, please verify your email address using the OTP below:
         
-        {verification_url}
+        Your OTP: {otp}
+        
+        This OTP will expire in 10 minutes.
         
         If you didn't create an account with us, please ignore this email.
         
@@ -40,8 +43,10 @@ def send_email_verification_on_registration(sender, instance, created, **kwargs)
                 .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
                 .header {{ background-color: #007bff; color: white; padding: 20px; text-align: center; }}
                 .content {{ padding: 20px; background-color: #f9f9f9; }}
-                .button {{ display: inline-block; padding: 12px 24px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }}
+                .otp-box {{ background-color: #007bff; color: white; font-size: 28px; font-weight: bold; text-align: center; padding: 25px; margin: 25px 0; border-radius: 8px; letter-spacing: 8px; }}
                 .footer {{ text-align: center; padding: 20px; font-size: 12px; color: #666; }}
+                .welcome {{ background-color: #d4edda; color: #155724; padding: 15px; border-radius: 5px; margin: 15px 0; }}
+                .warning {{ background-color: #fff3cd; color: #856404; padding: 15px; border-radius: 5px; margin: 15px 0; }}
             </style>
         </head>
         <body>
@@ -50,15 +55,27 @@ def send_email_verification_on_registration(sender, instance, created, **kwargs)
                     <h1>Welcome to ResumeIt!</h1>
                 </div>
                 <div class="content">
-                    <h2>Hello {instance.full_name or instance.username},</h2>
-                    <p>Thank you for registering with ResumeIt. To complete your registration, please verify your email address by clicking the button below:</p>
-                    <a href="{verification_url}" class="button">Verify Email Address</a>
-                    <p>If the button doesn't work, you can copy and paste this link into your browser:</p>
-                    <p><a href="{verification_url}">{verification_url}</a></p>
+                    <div class="welcome">
+                        <h2>🎉 Welcome {instance.full_name or instance.username}!</h2>
+                        <p>Thank you for joining ResumeIt. We're excited to help you create amazing resumes!</p>
+                    </div>
+                    
+                    <h3>Verify Your Email Address</h3>
+                    <p>To complete your registration and secure your account, please use the OTP below:</p>
+                    
+                    <div class="otp-box">{otp}</div>
+                    
+                    <div class="warning">
+                        <strong>⏰ Important:</strong> This OTP will expire in 10 minutes. Please verify your email as soon as possible.
+                    </div>
+                    
+                    <p>Enter this OTP in the verification form to activate your account and start using ResumeIt.</p>
+                    
                     <p>If you didn't create an account with us, please ignore this email.</p>
                 </div>
                 <div class="footer">
                     <p>Best regards,<br>The ResumeIt Team</p>
+                    <p><small>This is an automated email. Please do not reply to this message.</small></p>
                 </div>
             </div>
         </body>
@@ -75,7 +92,7 @@ def send_email_verification_on_registration(sender, instance, created, **kwargs)
                 fail_silently=False,
             )
         except Exception as e:
-            print(f"Failed to send verification email to {instance.email}: {str(e)}")
+            print(f"Failed to send OTP email to {instance.email}: {str(e)}")
 
 
 @receiver(post_save, sender=User)
@@ -87,7 +104,7 @@ def create_user_activity_on_registration(sender, instance, created, **kwargs):
         UserActivity.objects.create(
             user=instance,
             activity_type='registration',
-            description='User registered'
+            description='User registered and OTP sent'
         )
 
 

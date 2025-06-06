@@ -9,8 +9,8 @@ import uuid
 from .models import UserActivity, Referral
 from .serializers import (
     UserSerializer, UserRegistrationSerializer, UserActivitySerializer,
-    ReferralSerializer, ReferralCreateSerializer, EmailVerificationSerializer,
-    ResendVerificationSerializer
+    ReferralSerializer, ReferralCreateSerializer, OTPVerificationSerializer,
+    ResendOTPSerializer
 )
 from .permissions import IsAdminUser, IsOwnerOrAdmin, IsVerifiedUser
 
@@ -144,49 +144,42 @@ class RegisterView(generics.CreateAPIView):
         )
 
 
-class EmailVerificationView(generics.GenericAPIView):
+class OTPVerificationView(generics.GenericAPIView):
     """
-    API view for email verification.
+    API view for OTP verification.
     """
-    serializer_class = EmailVerificationSerializer
+    serializer_class = OTPVerificationSerializer
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        token = serializer.validated_data['token']
+        user = serializer.validated_data['user']
         
-        try:
-            user = User.objects.get(email_verification_token=token, is_verified=False)
-            user.is_verified = True
-            user.email_verification_token = uuid.uuid4()  # Reset token for security
-            user.save()
-            
-            # Create activity record
-            UserActivity.objects.create(
-                user=user,
-                activity_type='email_verified',
-                description='User verified their email address'
-            )
-            
-            return Response(
-                {"message": "Email verified successfully!"},
-                status=status.HTTP_200_OK
-            )
-            
-        except User.DoesNotExist:
-            return Response(
-                {"error": "Invalid or expired verification token."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        # Mark user as verified
+        user.is_verified = True
+        user.clear_otp()  # Clear OTP data
+        user.save()
+        
+        # Create activity record
+        UserActivity.objects.create(
+            user=user,
+            activity_type='email_verified',
+            description='User verified their email address with OTP'
+        )
+        
+        return Response(
+            {"message": "Email verified successfully!"},
+            status=status.HTTP_200_OK
+        )
 
 
-class ResendVerificationView(generics.GenericAPIView):
+class ResendOTPView(generics.GenericAPIView):
     """
-    API view for resending email verification.
+    API view for resending OTP.
     """
-    serializer_class = ResendVerificationSerializer
+    serializer_class = ResendOTPSerializer
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, *args, **kwargs):
@@ -198,20 +191,17 @@ class ResendVerificationView(generics.GenericAPIView):
         try:
             user = User.objects.get(email=email, is_verified=False)
             
-            # Generate new token
-            user.email_verification_token = uuid.uuid4()
-            user.save()
+            # Generate new OTP
+            otp = user.generate_otp()
             
-            # Send verification email (this will be triggered by the signal)
-            verification_url = f"{settings.FRONTEND_URL}/verify-email/{user.email_verification_token}/"
-            
-            subject = "Resend: Verify Your Email - ResumeIt"
+            # Send OTP email
+            subject = "Your OTP for Email Verification - ResumeIt"
             message = f"""
             Hello {user.full_name or user.username},
             
-            Here's your new email verification link:
+            Your OTP for email verification is: {otp}
             
-            {verification_url}
+            This OTP will expire in 10 minutes.
             
             If you didn't request this, please ignore this email.
             
@@ -228,22 +218,24 @@ class ResendVerificationView(generics.GenericAPIView):
                     .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
                     .header {{ background-color: #007bff; color: white; padding: 20px; text-align: center; }}
                     .content {{ padding: 20px; background-color: #f9f9f9; }}
-                    .button {{ display: inline-block; padding: 12px 24px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }}
+                    .otp-box {{ background-color: #007bff; color: white; font-size: 24px; font-weight: bold; text-align: center; padding: 20px; margin: 20px 0; border-radius: 5px; letter-spacing: 5px; }}
                     .footer {{ text-align: center; padding: 20px; font-size: 12px; color: #666; }}
+                    .warning {{ background-color: #fff3cd; color: #856404; padding: 15px; border-radius: 5px; margin: 15px 0; }}
                 </style>
             </head>
             <body>
                 <div class="container">
                     <div class="header">
-                        <h1>Email Verification</h1>
+                        <h1>Email Verification OTP</h1>
                     </div>
                     <div class="content">
                         <h2>Hello {user.full_name or user.username},</h2>
-                        <p>Here's your new email verification link:</p>
-                        <a href="{verification_url}" class="button">Verify Email Address</a>
-                        <p>If the button doesn't work, you can copy and paste this link into your browser:</p>
-                        <p><a href="{verification_url}">{verification_url}</a></p>
-                        <p>If you didn't request this, please ignore this email.</p>
+                        <p>Your OTP for email verification is:</p>
+                        <div class="otp-box">{otp}</div>
+                        <div class="warning">
+                            <strong>Important:</strong> This OTP will expire in 10 minutes. Please use it as soon as possible.
+                        </div>
+                        <p>If you didn't request this OTP, please ignore this email.</p>
                     </div>
                     <div class="footer">
                         <p>Best regards,<br>The ResumeIt Team</p>
@@ -263,7 +255,7 @@ class ResendVerificationView(generics.GenericAPIView):
             )
             
             return Response(
-                {"message": "Verification email sent successfully!"},
+                {"message": "OTP sent successfully to your email!"},
                 status=status.HTTP_200_OK
             )
             
@@ -274,6 +266,6 @@ class ResendVerificationView(generics.GenericAPIView):
             )
         except Exception as e:
             return Response(
-                {"error": "Failed to send verification email. Please try again later."},
+                {"error": "Failed to send OTP. Please try again later."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
