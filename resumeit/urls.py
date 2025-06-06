@@ -13,6 +13,26 @@ from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
 )
+from django.http import JsonResponse
+
+def home_view(request):
+    return JsonResponse({
+        "message": "Welcome to the ResumeIt API",
+        "routes": [
+            "admin/",
+            "swagger/ [name='schema-swagger-ui']",
+            "redoc/ [name='schema-redoc']",
+            "api/token/ [name='token_obtain_pair']",
+            "api/token/refresh/ [name='token_refresh']",
+            "api/users/",
+            "api/resumes/",
+            "api/templates/",
+            "api/subscriptions/",
+            "api/ats/",
+            "media/<path>",
+        ]
+    })
+
 # Schema view for API documentation
 schema_view = get_schema_view(
     openapi.Info(
@@ -29,6 +49,7 @@ schema_view = get_schema_view(
 
 urlpatterns = [
     # Admin site
+    path('', home_view),  # Add this line for the root endpoint
     path('admin/', admin.site.urls),
     
     # API documentation
