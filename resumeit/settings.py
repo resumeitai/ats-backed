@@ -28,8 +28,12 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-22*!(&tr%xhy(m#2o088@$&906
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,https://ats-backed.onrender.com').split(',')
-
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    'ats-backed.onrender.com',
+    '.onrender.com',  # This allows any subdomain of onrender.com
+] + os.getenv('ALLOWED_HOSTS', '').split(',') if os.getenv('ALLOWED_HOSTS') else []
 # Application definition
 
 INSTALLED_APPS = [
