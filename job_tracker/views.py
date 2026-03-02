@@ -44,6 +44,8 @@ class JobApplicationViewSet(viewsets.ModelViewSet):
           ?source=LinkedIn
           ?search=python
         """
+        if getattr(self, 'swagger_fake_view', False):
+            return JobApplication.objects.none()
         if self.request.user.role == 'admin':
             queryset = JobApplication.objects.all()
         else:
@@ -307,6 +309,8 @@ class InterviewRoundViewSet(viewsets.ModelViewSet):
         Return interview rounds for the specified application,
         scoped to the current user.
         """
+        if getattr(self, 'swagger_fake_view', False):
+            return InterviewRound.objects.none()
         application_pk = self.kwargs.get('application_pk')
         if self.request.user.role == 'admin':
             return InterviewRound.objects.filter(application_id=application_pk)

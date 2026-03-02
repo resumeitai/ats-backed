@@ -97,6 +97,8 @@ class ReferralViewSet(viewsets.ModelViewSet):
         """
         Filter referrals based on user permissions.
         """
+        if getattr(self, 'swagger_fake_view', False):
+            return Referral.objects.none()
         if self.request.user.role == 'admin':
             return Referral.objects.all()
         return Referral.objects.filter(referrer=self.request.user)

@@ -50,6 +50,8 @@ class CoverLetterViewSet(viewsets.ModelViewSet):
         Filter cover letters by the current user.
         Admin users can see all cover letters.
         """
+        if getattr(self, 'swagger_fake_view', False):
+            return CoverLetter.objects.none()
         if self.request.user.role == 'admin':
             return CoverLetter.objects.all()
         return CoverLetter.objects.filter(user=self.request.user)

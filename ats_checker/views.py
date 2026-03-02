@@ -28,6 +28,8 @@ class ATSScoreViewSet(viewsets.ModelViewSet):
         """
         Filter ATS scores based on user permissions.
         """
+        if getattr(self, 'swagger_fake_view', False):
+            return ATSScore.objects.none()
         if self.request.user.role == 'admin':
             return ATSScore.objects.all()
         return ATSScore.objects.filter(user=self.request.user)

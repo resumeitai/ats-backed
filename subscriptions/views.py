@@ -50,7 +50,7 @@ class SubscriptionPlanViewSet(viewsets.ModelViewSet):
         queryset = SubscriptionPlan.objects.all()
         
         # Admin users can see all plans, regular users only see active plans
-        if not self.request.user.role == 'admin':
+        if getattr(self, 'swagger_fake_view', False) or not getattr(self.request.user, 'role', None) == 'admin':
             queryset = queryset.filter(is_active=True)
         
         return queryset
@@ -68,6 +68,8 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
         """
         Filter subscriptions based on user permissions.
         """
+        if getattr(self, 'swagger_fake_view', False):
+            return Subscription.objects.none()
         if self.request.user.role == 'admin':
             return Subscription.objects.all()
         return Subscription.objects.filter(user=self.request.user)
@@ -134,6 +136,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
         """
         Filter transactions based on user permissions.
         """
+        if getattr(self, 'swagger_fake_view', False):
+            return Transaction.objects.none()
         if self.request.user.role == 'admin':
             return Transaction.objects.all()
         return Transaction.objects.filter(user=self.request.user)

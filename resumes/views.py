@@ -23,6 +23,8 @@ class ResumeViewSet(viewsets.ModelViewSet):
         """
         Filter resumes based on user permissions. Excludes soft-deleted.
         """
+        if getattr(self, 'swagger_fake_view', False):
+            return Resume.objects.none()
         if self.request.user.role == 'admin':
             return Resume.objects.filter(is_deleted=False)
         return Resume.objects.filter(user=self.request.user, is_deleted=False)
