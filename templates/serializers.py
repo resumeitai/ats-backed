@@ -30,12 +30,13 @@ class TemplateSerializer(serializers.ModelSerializer):
         source='category',
         write_only=True
     )
-    
+
     class Meta:
         model = Template
-        fields = ('id', 'name', 'description', 'category', 'category_id', 'thumbnail', 
-                  'is_premium', 'is_active', 'created_at', 'updated_at')
-        read_only_fields = ('id', 'created_at', 'updated_at')
+        fields = ('id', 'name', 'description', 'category', 'category_id', 'thumbnail',
+                  'is_premium', 'is_featured', 'is_active', 'industry_tags',
+                  'usage_count', 'average_ats_score', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'usage_count', 'average_ats_score', 'created_at', 'updated_at')
 
 
 class TemplateDetailSerializer(serializers.ModelSerializer):
@@ -44,12 +45,13 @@ class TemplateDetailSerializer(serializers.ModelSerializer):
     """
     category = TemplateCategorySerializer(read_only=True)
     sections = TemplateSectionSerializer(many=True, read_only=True)
-    
+
     class Meta:
         model = Template
-        fields = ('id', 'name', 'description', 'category', 'thumbnail', 'html_structure', 
-                  'css_styles', 'is_premium', 'is_active', 'created_at', 'updated_at', 'sections')
-        read_only_fields = ('id', 'created_at', 'updated_at')
+        fields = ('id', 'name', 'description', 'category', 'thumbnail', 'html_structure',
+                  'css_styles', 'is_premium', 'is_featured', 'is_active', 'industry_tags',
+                  'usage_count', 'average_ats_score', 'created_at', 'updated_at', 'sections')
+        read_only_fields = ('id', 'usage_count', 'average_ats_score', 'created_at', 'updated_at')
 
 
 class TemplateCreateUpdateSerializer(serializers.ModelSerializer):

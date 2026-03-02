@@ -18,6 +18,13 @@ redis
 razorpay
 stripe
 
+# PDF & DOCX export
+xhtml2pdf
+python-docx
+
+# Structured logging
+python-json-logger
+
 # Development and testing
 pytest
 pytest-django

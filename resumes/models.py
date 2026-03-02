@@ -14,14 +14,16 @@ class Resume(models.Model):
     title = models.CharField(_('Resume Title'), max_length=255)
     content = models.JSONField(_('Resume Content'), default=dict)
     is_active = models.BooleanField(_('Is Active'), default=True)
+    is_deleted = models.BooleanField(_('Is Deleted'), default=False)
+    deleted_at = models.DateTimeField(_('Deleted At'), null=True, blank=True)
     created_at = models.DateTimeField(_('Created At'), auto_now_add=True)
     updated_at = models.DateTimeField(_('Updated At'), auto_now=True)
-    
+
     class Meta:
         verbose_name = _('Resume')
         verbose_name_plural = _('Resumes')
         ordering = ['-updated_at']
-    
+
     def __str__(self):
         return f"{self.user.username} - {self.title}"
 

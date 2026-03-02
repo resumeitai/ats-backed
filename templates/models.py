@@ -28,14 +28,18 @@ class Template(models.Model):
     html_structure = models.TextField(_('HTML Structure'))
     css_styles = models.TextField(_('CSS Styles'), blank=True)
     is_premium = models.BooleanField(_('Is Premium'), default=False)
+    is_featured = models.BooleanField(_('Is Featured'), default=False)
     is_active = models.BooleanField(_('Is Active'), default=True)
+    industry_tags = models.JSONField(_('Industry Tags'), default=list, blank=True)
+    usage_count = models.PositiveIntegerField(_('Usage Count'), default=0)
+    average_ats_score = models.FloatField(_('Average ATS Score'), null=True, blank=True)
     created_at = models.DateTimeField(_('Created At'), auto_now_add=True)
     updated_at = models.DateTimeField(_('Updated At'), auto_now=True)
-    
+
     class Meta:
         verbose_name = _('Template')
         verbose_name_plural = _('Templates')
-    
+
     def __str__(self):
         return self.name
 

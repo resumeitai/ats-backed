@@ -39,9 +39,9 @@ services:
       - key: CORS_ALLOWED_ORIGINS
         value: http://localhost:3000,https://your-frontend.onrender.com
       - key: EMAIL_HOST_USER
-        value: klunewsapplication@gmail.com
+        sync: false  # Set manually in Render dashboard
       - key: EMAIL_HOST_PASSWORD
-        value: jkjkfxoxqivmzdkq
+        sync: false  # Set manually in Render dashboard
       - key: CELERY_BROKER
         fromService:
           type: redis

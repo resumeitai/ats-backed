@@ -60,20 +60,29 @@ class TemplateViewSet(viewsets.ModelViewSet):
         Filter templates based on query parameters.
         """
         queryset = Template.objects.filter(is_active=True)
-        
+
         # Filter by category
         category_id = self.request.query_params.get('category')
         if category_id:
             queryset = queryset.filter(category_id=category_id)
-        
+
         # Filter by premium status
         is_premium = self.request.query_params.get('is_premium')
         if is_premium is not None:
-            is_premium = is_premium.lower() == 'true'
-            queryset = queryset.filter(is_premium=is_premium)
-        
+            queryset = queryset.filter(is_premium=is_premium.lower() == 'true')
+
+        # Filter by featured
+        is_featured = self.request.query_params.get('is_featured')
+        if is_featured is not None:
+            queryset = queryset.filter(is_featured=is_featured.lower() == 'true')
+
+        # Filter by industry tag
+        industry = self.request.query_params.get('industry')
+        if industry:
+            queryset = queryset.filter(industry_tags__contains=industry)
+
         return queryset
-    
+
     @action(detail=True, methods=['get'])
     def sections(self, request, pk=None):
         """
@@ -83,6 +92,28 @@ class TemplateViewSet(viewsets.ModelViewSet):
         sections = TemplateSection.objects.filter(template=template)
         serializer = TemplateSectionSerializer(sections, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['get'])
+    def stats(self, request, pk=None):
+        """
+        Get usage statistics for a specific template.
+        """
+        template = self.get_object()
+        from resumes.models import Resume
+        from ats_checker.models import ATSScore
+        from django.db.models import Avg
+
+        resume_count = Resume.objects.filter(template=template).count()
+        avg_score = ATSScore.objects.filter(
+            resume__template=template
+        ).aggregate(avg=Avg('score'))['avg']
+
+        return Response({
+            'template_id': template.id,
+            'usage_count': template.usage_count,
+            'resume_count': resume_count,
+            'average_ats_score': round(avg_score, 1) if avg_score else None,
+        })
 
 
 class TemplateSectionViewSet(viewsets.ModelViewSet):

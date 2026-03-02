@@ -26,7 +26,22 @@ class User(AbstractUser):
     email_otp = models.CharField(_('Email OTP'), max_length=6, blank=True, null=True)
     otp_created_at = models.DateTimeField(_('OTP Created At'), blank=True, null=True)
     otp_attempts = models.IntegerField(_('OTP Attempts'), default=0)
-    
+
+    # Password reset OTP fields
+    password_reset_otp = models.CharField(_('Password Reset OTP'), max_length=6, blank=True, null=True)
+    password_reset_otp_created_at = models.DateTimeField(_('Password Reset OTP Created At'), blank=True, null=True)
+
+    # Extended profile fields
+    industry = models.CharField(_('Industry'), max_length=100, blank=True)
+    years_of_experience = models.PositiveIntegerField(_('Years of Experience'), null=True, blank=True)
+    location = models.CharField(_('Location'), max_length=255, blank=True)
+    notification_preferences = models.JSONField(_('Notification Preferences'), default=dict, blank=True)
+    admin_notes = models.TextField(_('Admin Notes'), blank=True)
+
+    # Soft delete
+    is_deleted = models.BooleanField(_('Is Deleted'), default=False)
+    deleted_at = models.DateTimeField(_('Deleted At'), null=True, blank=True)
+
     created_at = models.DateTimeField(_('Created At'), auto_now_add=True)
     updated_at = models.DateTimeField(_('Updated At'), auto_now=True)
     
@@ -84,7 +99,36 @@ class User(AbstractUser):
         self.otp_created_at = None
         self.otp_attempts = 0
         self.save(update_fields=['email_otp', 'otp_created_at', 'otp_attempts'])
-    
+
+    def generate_password_reset_otp(self):
+        """Generate a 6-digit OTP for password reset."""
+        self.password_reset_otp = ''.join(random.choices(string.digits, k=6))
+        self.password_reset_otp_created_at = timezone.now()
+        self.save(update_fields=['password_reset_otp', 'password_reset_otp_created_at'])
+        return self.password_reset_otp
+
+    def is_password_reset_otp_valid(self, otp):
+        """Check if the provided password reset OTP is valid (expires after 10 minutes)."""
+        if not self.password_reset_otp or not self.password_reset_otp_created_at:
+            return False
+        expiry_time = self.password_reset_otp_created_at + timezone.timedelta(minutes=10)
+        if timezone.now() > expiry_time:
+            return False
+        return self.password_reset_otp == otp
+
+    def clear_password_reset_otp(self):
+        """Clear password reset OTP data."""
+        self.password_reset_otp = None
+        self.password_reset_otp_created_at = None
+        self.save(update_fields=['password_reset_otp', 'password_reset_otp_created_at'])
+
+    @property
+    def profile_completion_percentage(self):
+        """Calculate profile completion as a percentage."""
+        fields = ['full_name', 'email', 'phone_number', 'industry', 'years_of_experience', 'location']
+        filled = sum(1 for f in fields if getattr(self, f))
+        return int((filled / len(fields)) * 100)
+
     @property
     def is_subscribed(self):
         """

@@ -8,22 +8,43 @@ User = get_user_model()
 
 
 class UserSerializer(serializers.ModelSerializer):
-    """
-    Serializer for the User model.
-    """
-    is_subscribed = serializers.ReadOnlyField()  
+    """Serializer for the User model."""
+    is_subscribed = serializers.ReadOnlyField()
     subscription_status = serializers.SerializerMethodField()
-    
+    profile_completion = serializers.ReadOnlyField(source='profile_completion_percentage')
+
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'full_name', 'phone_number', 'role', 
-                 'is_verified', 'is_subscribed', 'subscription_status', 'created_at')
-        read_only_fields = ('id', 'role', 'is_verified', 'is_subscribed', 'subscription_status', 'created_at')
-    
+        fields = (
+            'id', 'username', 'email', 'full_name', 'phone_number', 'role',
+            'is_verified', 'is_subscribed', 'subscription_status',
+            'industry', 'years_of_experience', 'location', 'notification_preferences',
+            'profile_completion', 'created_at',
+        )
+        read_only_fields = ('id', 'role', 'is_verified', 'is_subscribed', 'subscription_status', 'profile_completion', 'created_at')
+
     def get_subscription_status(self, obj):
-        """
-        Get detailed subscription status using the model method.
-        """
+        return obj.get_subscription_status()
+
+
+class AdminUserSerializer(serializers.ModelSerializer):
+    """Serializer for admin-level user management."""
+    is_subscribed = serializers.ReadOnlyField()
+    subscription_status = serializers.SerializerMethodField()
+    profile_completion = serializers.ReadOnlyField(source='profile_completion_percentage')
+
+    class Meta:
+        model = User
+        fields = (
+            'id', 'username', 'email', 'full_name', 'phone_number', 'role',
+            'is_verified', 'is_active', 'is_subscribed', 'subscription_status',
+            'industry', 'years_of_experience', 'location', 'notification_preferences',
+            'admin_notes', 'is_deleted', 'deleted_at', 'profile_completion',
+            'created_at', 'updated_at', 'last_login',
+        )
+        read_only_fields = ('id', 'is_subscribed', 'subscription_status', 'profile_completion', 'created_at', 'updated_at', 'last_login')
+
+    def get_subscription_status(self, obj):
         return obj.get_subscription_status()
 
 
@@ -102,6 +123,41 @@ class ResendOTPSerializer(serializers.Serializer):
             return value
         except User.DoesNotExist:
             raise serializers.ValidationError("User with this email not found or already verified.")
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    """Serializer for requesting a password reset OTP."""
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        try:
+            User.objects.get(email=value)
+        except User.DoesNotExist:
+            raise serializers.ValidationError("No user found with this email address.")
+        return value
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """Serializer for confirming password reset with OTP."""
+    email = serializers.EmailField()
+    otp = serializers.CharField(min_length=6, max_length=6)
+    new_password = serializers.CharField(write_only=True, validators=[validate_password])
+    new_password2 = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        if attrs['new_password'] != attrs['new_password2']:
+            raise serializers.ValidationError({"new_password": "Password fields didn't match."})
+
+        try:
+            user = User.objects.get(email=attrs['email'])
+        except User.DoesNotExist:
+            raise serializers.ValidationError("No user found with this email address.")
+
+        if not user.is_password_reset_otp_valid(attrs['otp']):
+            raise serializers.ValidationError({"otp": "Invalid or expired OTP."})
+
+        attrs['user'] = user
+        return attrs
 
 
 class UserActivitySerializer(serializers.ModelSerializer):

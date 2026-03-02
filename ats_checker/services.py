@@ -1,319 +1,265 @@
 """
 Services for ATS Score Checker.
-This module contains the core logic for analyzing resumes against job descriptions.
+Uses spaCy and NLTK for NLP-powered resume analysis.
 """
 import re
-import json
 import logging
-from collections import Counter
-from typing import Dict, List, Tuple, Any
+from typing import List
 
-# For actual implementation, you would use NLP libraries
-# import spacy
-# import nltk
-# from nltk.tokenize import word_tokenize
-# from nltk.corpus import stopwords
-
-from .models import ATSScore, KeywordMatch, OptimizationSuggestion, JobTitleSynonym
+from .models import ATSScore, KeywordMatch, OptimizationSuggestion
+from .nlp import SpaCyKeywordExtractor, SynonymExpander, TextAnalyzer
 
 logger = logging.getLogger(__name__)
 
+# Module-level instances (loaded once, reused)
+_keyword_extractor = SpaCyKeywordExtractor()
+_synonym_expander = SynonymExpander()
+_text_analyzer = TextAnalyzer()
+
 
 class ATSScoreAnalyzer:
-    """
-    Class for analyzing resumes against job descriptions and calculating ATS scores.
-    """
-    
+    """Analyzes resumes against job descriptions using spaCy/NLTK NLP pipeline."""
+
+    # Scoring weights: keyword 50%, skills 20%, structure 15%, formatting 15%
+    KEYWORD_WEIGHT = 0.50
+    SKILLS_WEIGHT = 0.20
+    STRUCTURE_WEIGHT = 0.15
+    FORMATTING_WEIGHT = 0.15
+
     def __init__(self, ats_score_obj: ATSScore):
-        """
-        Initialize with an ATSScore object.
-        """
         self.ats_score = ats_score_obj
         self.resume = ats_score_obj.resume
         self.resume_content = self.resume.content
         self.job_title = ats_score_obj.job_title
         self.job_description = ats_score_obj.job_description
-        
-        # Results
+
         self.score = 0
         self.analysis = {}
         self.suggestions = []
-        self.keywords = []
-    
+        self.job_keywords = []
+        self.resume_keywords = []
+
     def analyze(self) -> ATSScore:
-        """
-        Analyze the resume against the job description and calculate the ATS score.
-        """
+        """Run the full analysis pipeline."""
         try:
-            # Extract keywords from job description
-            self.extract_keywords()
-            
-            # Calculate keyword match score
-            keyword_score = self.calculate_keyword_match()
-            
-            # Analyze resume structure
-            structure_score = self.analyze_structure()
-            
-            # Analyze formatting
-            formatting_score = self.analyze_formatting()
-            
-            # Calculate overall score (weighted average)
-            self.score = int(0.6 * keyword_score + 0.25 * structure_score + 0.15 * formatting_score)
-            
-            # Generate suggestions
-            self.generate_suggestions()
-            
-            # Save results to ATSScore object
+            # 1. Extract keywords from job description and resume
+            self.job_keywords = _keyword_extractor.extract_keywords(
+                self.job_title + " " + self.job_description
+            )
+            resume_text = self._get_resume_text()
+            self.resume_keywords = _keyword_extractor.extract_keywords(resume_text)
+
+            # 2. Calculate keyword match score (with synonym expansion)
+            keyword_score = self._calculate_keyword_match(resume_text)
+
+            # 3. Calculate skills gap score
+            skills_gap = _text_analyzer.identify_skills_gap(self.resume_keywords, self.job_keywords)
+            skills_score = max(0, 100 - len(skills_gap) * 5)  # -5 per missing skill, min 0
+            self.analysis['skills_gap'] = {
+                'score': skills_score,
+                'missing_skills': skills_gap,
+            }
+
+            # 4. Analyze structure
+            structure_result = _text_analyzer.analyze_structure(self.resume_content)
+            structure_score = structure_result['score']
+            self.analysis['structure'] = structure_result
+
+            # 5. Analyze formatting
+            formatting_result = _text_analyzer.analyze_formatting(self.resume_content)
+            formatting_score = formatting_result['score']
+            self.analysis['formatting'] = formatting_result
+
+            # 6. Calculate overall score
+            self.score = int(
+                self.KEYWORD_WEIGHT * keyword_score
+                + self.SKILLS_WEIGHT * skills_score
+                + self.STRUCTURE_WEIGHT * structure_score
+                + self.FORMATTING_WEIGHT * formatting_score
+            )
+            self.score = min(100, max(0, self.score))
+
+            # 7. Generate suggestions
+            self._generate_suggestions(resume_text, skills_gap)
+
+            # 8. Save results
             self.ats_score.score = self.score
             self.ats_score.analysis = self.analysis
             self.ats_score.suggestions = self.suggestions
             self.ats_score.save()
-            
-            # Create KeywordMatch objects
-            self.save_keyword_matches()
-            
-            # Create OptimizationSuggestion objects
-            self.save_optimization_suggestions()
-            
+
+            self._save_keyword_matches()
+            self._save_optimization_suggestions()
+
             return self.ats_score
-        
+
         except Exception as e:
-            logger.error(f"Error analyzing resume: {str(e)}")
-            # Set a default score and error message
+            logger.error(f"Error analyzing resume: {str(e)}", exc_info=True)
             self.ats_score.score = 0
             self.ats_score.analysis = {"error": str(e)}
             self.ats_score.save()
             return self.ats_score
-    
-    def extract_keywords(self) -> None:
-        """
-        Extract keywords from job description.
-        In a real implementation, this would use NLP libraries like spaCy or NLTK.
-        """
-        # Simplified implementation for demonstration
-        # Remove punctuation and convert to lowercase
-        text = re.sub(r'[^\w\s]', '', self.job_description.lower())
-        
-        # Split into words
-        words = text.split()
-        
-        # Count word frequencies
-        word_counts = Counter(words)
-        
-        # Filter out common words and keep only relevant keywords
-        # In a real implementation, you would use a proper stopwords list and more sophisticated NLP
-        common_words = {'the', 'and', 'a', 'to', 'of', 'in', 'for', 'with', 'on', 'at', 'from', 'by'}
-        keywords = [(word, count) for word, count in word_counts.items() 
-                   if word not in common_words and len(word) > 2]
-        
-        # Sort by frequency
-        keywords.sort(key=lambda x: x[1], reverse=True)
-        
-        # Take top keywords
-        top_keywords = keywords[:20]
-        
-        # Assign importance based on frequency
-        self.keywords = []
-        for keyword, count in top_keywords:
-            importance = 'high' if count > 5 else 'medium' if count > 2 else 'low'
-            self.keywords.append({
-                'keyword': keyword,
-                'count': count,
-                'importance': importance
-            })
-    
-    def calculate_keyword_match(self) -> int:
-        """
-        Calculate the keyword match score.
-        """
-        if not self.keywords:
+
+    def _calculate_keyword_match(self, resume_text: str) -> float:
+        """Calculate keyword match score using NLP synonym expansion."""
+        if not self.job_keywords:
             return 0
-        
-        # Convert resume content to text for analysis
-        resume_text = self._get_resume_text()
-        
-        # Check for each keyword
+
+        resume_text_lower = resume_text.lower()
         total_weight = 0
         matched_weight = 0
-        
-        for keyword_info in self.keywords:
-            keyword = keyword_info['keyword']
-            importance = keyword_info['importance']
-            
-            # Assign weights based on importance
+
+        for kw in self.job_keywords:
+            keyword = kw['keyword']
+            importance = kw.get('importance', 'low')
             weight = 3 if importance == 'high' else 2 if importance == 'medium' else 1
             total_weight += weight
-            
-            # Check if keyword is in resume
-            if re.search(r'\b' + re.escape(keyword) + r'\b', resume_text, re.IGNORECASE):
+
+            # Check exact match
+            found = keyword.lower() in resume_text_lower
+
+            # If not found, check via synonym expansion
+            if not found:
+                synonyms = _synonym_expander.expand(keyword)
+                for syn in synonyms:
+                    if syn.lower() in resume_text_lower:
+                        found = True
+                        break
+
+            # If still not found, check via stem matching against resume keywords
+            if not found:
+                for rkw in self.resume_keywords:
+                    if _synonym_expander.are_related(keyword, rkw['keyword']):
+                        found = True
+                        break
+
+            if found:
                 matched_weight += weight
-                keyword_info['found'] = True
-                
-                # Find context (simplified)
+                kw['found'] = True
                 match = re.search(r'[^.]*\b' + re.escape(keyword) + r'\b[^.]*', resume_text, re.IGNORECASE)
-                if match:
-                    keyword_info['context'] = match.group(0).strip()
+                kw['context'] = match.group(0).strip() if match else ''
             else:
-                keyword_info['found'] = False
-                keyword_info['context'] = ''
-        
-        # Calculate score as percentage
-        if total_weight > 0:
-            score = (matched_weight / total_weight) * 100
-        else:
-            score = 0
-        
-        # Save analysis
+                kw['found'] = False
+                kw['context'] = ''
+
+        score = (matched_weight / total_weight * 100) if total_weight > 0 else 0
+
         self.analysis['keyword_match'] = {
             'score': score,
-            'matched_keywords': sum(1 for k in self.keywords if k.get('found', False)),
-            'total_keywords': len(self.keywords),
-            'details': self.keywords
+            'matched_keywords': sum(1 for k in self.job_keywords if k.get('found')),
+            'total_keywords': len(self.job_keywords),
+            'details': self.job_keywords,
         }
-        
         return score
-    
-    def analyze_structure(self) -> int:
-        """
-        Analyze the structure of the resume.
-        """
-        # Check for essential sections
-        essential_sections = ['education', 'experience', 'skills']
-        found_sections = []
-        
-        # In a real implementation, you would analyze the actual structure
-        # Here we're just checking if the keys exist in the resume content
-        for section in essential_sections:
-            if section in self.resume_content:
-                found_sections.append(section)
-        
-        # Calculate score based on found sections
-        score = (len(found_sections) / len(essential_sections)) * 100
-        
-        # Save analysis
-        self.analysis['structure'] = {
-            'score': score,
-            'found_sections': found_sections,
-            'missing_sections': [s for s in essential_sections if s not in found_sections]
-        }
-        
-        return score
-    
-    def analyze_formatting(self) -> int:
-        """
-        Analyze the formatting of the resume.
-        """
-        # In a real implementation, you would analyze the actual formatting
-        # Here we're just returning a default score
-        score = 80
-        
-        # Save analysis
-        self.analysis['formatting'] = {
-            'score': score,
-            'issues': []
-        }
-        
-        return score
-    
-    def generate_suggestions(self) -> None:
-        """
-        Generate suggestions for improving the resume.
-        """
+
+    def _generate_suggestions(self, resume_text: str, skills_gap: List[dict]) -> None:
+        """Generate improvement suggestions."""
         suggestions = []
-        
-        # Suggest adding missing keywords
-        missing_keywords = [k['keyword'] for k in self.keywords 
-                           if k.get('importance') in ['high', 'medium'] and not k.get('found', False)]
-        if missing_keywords:
+
+        # Missing keywords
+        missing = [k['keyword'] for k in self.job_keywords
+                   if k.get('importance') in ('high', 'medium') and not k.get('found')]
+        if missing:
             suggestions.append({
                 'type': 'missing_keywords',
                 'section': 'general',
-                'description': f"Add these important keywords to your resume: {', '.join(missing_keywords)}",
-                'keywords': missing_keywords
+                'description': f"Add these important keywords: {', '.join(missing[:10])}",
+                'keywords': missing[:10],
             })
-        
-        # Suggest adding missing sections
-        if 'structure' in self.analysis and 'missing_sections' in self.analysis['structure']:
-            missing_sections = self.analysis['structure']['missing_sections']
+
+        # Missing skills
+        if skills_gap:
+            skill_names = [s['keyword'] for s in skills_gap[:8]]
+            suggestions.append({
+                'type': 'missing_skills',
+                'section': 'skills',
+                'description': f"Consider adding these skills: {', '.join(skill_names)}",
+                'skills': skill_names,
+            })
+
+        # Missing sections
+        if 'structure' in self.analysis:
+            details = self.analysis['structure'].get('details', {})
+            missing_sections = [s for s, info in details.items() if not info.get('present')]
             if missing_sections:
                 suggestions.append({
                     'type': 'missing_sections',
                     'section': 'structure',
-                    'description': f"Add these missing sections to your resume: {', '.join(missing_sections)}",
-                    'sections': missing_sections
+                    'description': f"Add these sections: {', '.join(missing_sections)}",
+                    'sections': missing_sections,
                 })
-        
-        # Save suggestions
+
+        # Formatting issues
+        if 'formatting' in self.analysis:
+            for issue in self.analysis['formatting'].get('issues', [])[:5]:
+                suggestions.append({
+                    'type': 'formatting',
+                    'section': issue.get('section', 'general'),
+                    'description': issue.get('issue', ''),
+                })
+
+        # Experience phrasing suggestions
+        phrasing = _text_analyzer.suggest_experience_phrasing(resume_text)
+        for p in phrasing[:5]:
+            suggestions.append({
+                'type': 'phrasing',
+                'section': 'experience',
+                'description': p.get('suggestion', ''),
+                'original': p.get('original', ''),
+                'reason': p.get('reason', ''),
+            })
+
         self.suggestions = suggestions
-    
-    def save_keyword_matches(self) -> None:
-        """
-        Save keyword matches to database.
-        """
-        for keyword_info in self.keywords:
-            KeywordMatch.objects.create(
+
+    def _save_keyword_matches(self) -> None:
+        """Save keyword matches to database."""
+        matches = []
+        for kw in self.job_keywords:
+            matches.append(KeywordMatch(
                 ats_score=self.ats_score,
-                keyword=keyword_info['keyword'],
-                found=keyword_info.get('found', False),
-                importance=keyword_info['importance'],
-                context=keyword_info.get('context', '')
-            )
-    
-    def save_optimization_suggestions(self) -> None:
-        """
-        Save optimization suggestions to database.
-        """
+                keyword=kw['keyword'],
+                found=kw.get('found', False),
+                importance=kw.get('importance', 'low'),
+                context=kw.get('context', ''),
+            ))
+        KeywordMatch.objects.bulk_create(matches)
+
+    def _save_optimization_suggestions(self) -> None:
+        """Save optimization suggestions to database."""
+        objs = []
         for suggestion in self.suggestions:
-            if suggestion['type'] == 'missing_keywords':
-                for keyword in suggestion['keywords']:
-                    OptimizationSuggestion.objects.create(
-                        ats_score=self.ats_score,
-                        section='general',
-                        original_text='',
-                        suggested_text=f"Consider adding the keyword '{keyword}' to your resume",
-                        reason=f"The keyword '{keyword}' is important for this job but was not found in your resume"
-                    )
-            elif suggestion['type'] == 'missing_sections':
-                for section in suggestion['sections']:
-                    OptimizationSuggestion.objects.create(
-                        ats_score=self.ats_score,
-                        section=section,
-                        original_text='',
-                        suggested_text=f"Add a {section} section to your resume",
-                        reason=f"A {section} section is expected in resumes for this type of job"
-                    )
-    
+            objs.append(OptimizationSuggestion(
+                ats_score=self.ats_score,
+                section=suggestion.get('section', 'general'),
+                original_text=suggestion.get('original', ''),
+                suggested_text=suggestion.get('description', ''),
+                reason=suggestion.get('reason', suggestion.get('description', '')),
+            ))
+        OptimizationSuggestion.objects.bulk_create(objs)
+
     def _get_resume_text(self) -> str:
-        """
-        Convert resume content to text for analysis.
-        """
-        # In a real implementation, you would extract text from the resume content
-        # Here we're just concatenating all values in the resume content
+        """Convert resume content JSON to plain text."""
         if isinstance(self.resume_content, dict):
-            text = ""
+            parts = []
             for section, content in self.resume_content.items():
                 if isinstance(content, str):
-                    text += content + " "
+                    parts.append(content)
                 elif isinstance(content, list):
                     for item in content:
                         if isinstance(item, dict):
-                            text += " ".join(str(v) for v in item.values()) + " "
+                            parts.append(" ".join(str(v) for v in item.values()))
                         else:
-                            text += str(item) + " "
+                            parts.append(str(item))
                 elif isinstance(content, dict):
-                    text += " ".join(str(v) for v in content.values()) + " "
-            return text
+                    parts.append(" ".join(str(v) for v in content.values()))
+            return " ".join(parts)
         elif isinstance(self.resume_content, str):
             return self.resume_content
-        else:
-            return str(self.resume_content)
+        return str(self.resume_content)
 
 
 def analyze_resume(ats_score_id: int) -> ATSScore:
-    """
-    Analyze a resume against a job description.
-    This function can be called from a Celery task.
-    """
+    """Analyze a resume against a job description. Called from Celery task."""
     try:
         ats_score = ATSScore.objects.get(id=ats_score_id)
         analyzer = ATSScoreAnalyzer(ats_score)
@@ -322,33 +268,19 @@ def analyze_resume(ats_score_id: int) -> ATSScore:
         logger.error(f"ATSScore with ID {ats_score_id} does not exist")
         return None
     except Exception as e:
-        logger.error(f"Error analyzing resume: {str(e)}")
+        logger.error(f"Error analyzing resume: {str(e)}", exc_info=True)
         return None
 
 
 def apply_suggestion(suggestion_id: int) -> bool:
-    """
-    Apply a suggestion to a resume.
-    """
+    """Mark a suggestion as applied."""
     try:
         suggestion = OptimizationSuggestion.objects.get(id=suggestion_id)
-        
         if suggestion.applied:
             return False
-        
-        # Get the resume
-        resume = suggestion.ats_score.resume
-        
-        # Apply the suggestion
-        # In a real implementation, you would modify the resume content based on the suggestion
-        # Here we're just marking the suggestion as applied
         suggestion.applied = True
         suggestion.save()
-        
         return True
     except OptimizationSuggestion.DoesNotExist:
         logger.error(f"OptimizationSuggestion with ID {suggestion_id} does not exist")
-        return False
-    except Exception as e:
-        logger.error(f"Error applying suggestion: {str(e)}")
         return False

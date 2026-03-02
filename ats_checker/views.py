@@ -5,9 +5,14 @@ from django.shortcuts import get_object_or_404
 from .models import ATSScore, KeywordMatch, OptimizationSuggestion, JobTitleSynonym
 from .serializers import (
     ATSScoreSerializer, ATSScoreCreateSerializer, KeywordMatchSerializer,
-    OptimizationSuggestionSerializer, JobTitleSynonymSerializer, ApplySuggestionSerializer
+    OptimizationSuggestionSerializer, JobTitleSynonymSerializer, ApplySuggestionSerializer,
+    ResumeOptimizeSerializer, OptimizedResumeSerializer,
 )
-from .services import analyze_resume, apply_suggestion
+from .services import apply_suggestion
+from .optimizer import ResumeOptimizer
+from .jd_parser import JobDescriptionParser
+from .tasks import analyze_resume_task
+from resumes.models import Resume, ResumeVersion
 from users.permissions import IsAdminUser, IsOwnerOrAdmin
 
 
@@ -36,14 +41,20 @@ class ATSScoreViewSet(viewsets.ModelViewSet):
         return ATSScoreSerializer
     
     def perform_create(self, serializer):
-        """
-        Create an ATS score and analyze the resume.
-        """
-        # Save the ATS score
+        """Create an ATS score and trigger async analysis."""
         ats_score = serializer.save()
-        
-        # Analyze the resume (in a real app, this would be done asynchronously with Celery)
-        analyze_resume(ats_score.id)
+        analyze_resume_task.delay(ats_score.id)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(
+            {"message": "ATS analysis started. Results will be available shortly.", "id": serializer.instance.id},
+            status=status.HTTP_202_ACCEPTED,
+            headers=headers,
+        )
     
     @action(detail=True, methods=['post'])
     def apply_suggestion(self, request, pk=None):
@@ -88,6 +99,101 @@ class ATSScoreViewSet(viewsets.ModelViewSet):
         suggestions = OptimizationSuggestion.objects.filter(ats_score=ats_score)
         serializer = OptimizationSuggestionSerializer(suggestions, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def optimize_resume(self, request):
+        """
+        Optimize a resume for a specific job description.
+
+        The user can paste a **raw job posting** (from LinkedIn, Indeed, etc.)
+        as ``job_description``.  The endpoint automatically parses it to
+        extract the relevant requirements and filters out noise (company
+        description, benefits, legal disclaimers).
+
+        ``job_title`` is optional — if omitted, the parser will auto-detect
+        it from the raw text.
+
+        If ``auto_apply`` is ``True``, the optimized content is saved back to
+        the resume and a new ``ResumeVersion`` is created.
+        """
+        serializer = ResumeOptimizeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        resume = get_object_or_404(
+            Resume,
+            id=serializer.validated_data['resume_id'],
+            user=request.user,
+        )
+
+        # Check premium subscription
+        has_premium = request.user.subscriptions.filter(
+            status='active', plan__is_premium=True
+        ).exists()
+        if not has_premium:
+            return Response(
+                {"error": "Resume Optimization is a premium feature. Please upgrade your subscription."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        raw_jd = serializer.validated_data['job_description']
+        provided_title = serializer.validated_data.get('job_title', '')
+
+        # Parse the raw job description to extract clean, relevant content
+        parser = JobDescriptionParser(raw_jd)
+        parsed = parser.parse()
+
+        # Use provided title, or fall back to parser-detected title
+        job_title = provided_title.strip() or parsed.get('job_title') or 'Software Developer'
+        clean_description = parsed.get('clean_description') or raw_jd
+
+        optimizer = ResumeOptimizer(
+            resume_content=resume.content,
+            job_title=job_title,
+            job_description=clean_description,
+        )
+        result = optimizer.optimize()
+
+        # Attach parsed JD metadata to the response
+        result['parsed_job_info'] = {
+            'detected_title': parsed.get('job_title'),
+            'company': parsed.get('company_name'),
+            'location': parsed.get('location'),
+            'experience_level': parsed.get('experience_level'),
+            'skills_found': parsed.get('skills_mentioned', []),
+            'requirements_count': len(parsed.get('requirements', [])),
+            'responsibilities_count': len(parsed.get('responsibilities', [])),
+        }
+
+        # If auto_apply is True, persist the optimized content
+        if serializer.validated_data.get('auto_apply'):
+            resume.content = result['optimized_content']
+            resume.save()
+
+            # Create a new ResumeVersion
+            latest = resume.versions.order_by('-version_number').first()
+            version_num = (latest.version_number + 1) if latest else 1
+            ResumeVersion.objects.create(
+                resume=resume,
+                content=result['optimized_content'],
+                version_number=version_num,
+            )
+
+        return Response(OptimizedResumeSerializer(result).data)
+
+    @action(detail=False, methods=['get'])
+    def supported_languages(self, request):
+        """Return list of supported languages for multi-language ATS analysis."""
+        from .nlp.multilang import get_supported_languages
+        return Response(get_supported_languages())
+
+    @action(detail=False, methods=['post'])
+    def detect_language(self, request):
+        """Detect language of the provided text."""
+        from .nlp.multilang import detect_language as detect_lang
+        text = request.data.get('text', '')
+        if not text:
+            return Response({"error": "text field is required."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"language": detect_lang(text)})
 
 
 class JobTitleSynonymViewSet(viewsets.ModelViewSet):

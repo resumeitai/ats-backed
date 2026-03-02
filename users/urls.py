@@ -2,7 +2,8 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     UserViewSet, UserActivityViewSet, ReferralViewSet,
-    RegisterView, OTPVerificationView, ResendOTPView
+    RegisterView, OTPVerificationView, ResendOTPView,
+    PasswordResetRequestView, PasswordResetConfirmView
 )
 
 router = DefaultRouter()
@@ -14,6 +15,7 @@ urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
     path('verify-email/', OTPVerificationView.as_view(), name='verify-email'),
     path('resend-verification/', ResendOTPView.as_view(), name='resend-verification'),
+    path('password-reset/', PasswordResetRequestView.as_view(), name='password-reset'),
+    path('password-reset-confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
     path('', include(router.urls)),
-
 ]

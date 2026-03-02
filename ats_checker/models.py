@@ -75,10 +75,30 @@ class JobTitleSynonym(models.Model):
     """
     title = models.CharField(_('Job Title'), max_length=255, unique=True)
     synonyms = models.JSONField(_('Synonyms'), default=list)
-    
+
     class Meta:
         verbose_name = _('Job Title Synonym')
         verbose_name_plural = _('Job Title Synonyms')
-    
+
     def __str__(self):
         return self.title
+
+
+class SavedJobDescription(models.Model):
+    """
+    Model for saving job descriptions for reuse.
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='saved_job_descriptions')
+    title = models.CharField(_('Job Title'), max_length=255)
+    company = models.CharField(_('Company'), max_length=255, blank=True)
+    description = models.TextField(_('Job Description'))
+    created_at = models.DateTimeField(_('Created At'), auto_now_add=True)
+    updated_at = models.DateTimeField(_('Updated At'), auto_now=True)
+
+    class Meta:
+        verbose_name = _('Saved Job Description')
+        verbose_name_plural = _('Saved Job Descriptions')
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"{self.title} - {self.company}" if self.company else self.title

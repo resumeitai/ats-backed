@@ -1,4 +1,5 @@
 from django.db.models.signals import post_save, post_delete
+from django.db.models import F
 from django.dispatch import receiver
 from .models import Resume, ResumeVersion
 from users.models import UserActivity
@@ -7,7 +8,7 @@ from users.models import UserActivity
 @receiver(post_save, sender=Resume)
 def create_user_activity_on_resume_creation(sender, instance, created, **kwargs):
     """
-    Create a user activity record when a new resume is created.
+    Create a user activity record and increment template usage_count when a new resume is created.
     """
     if created:
         UserActivity.objects.create(
@@ -15,6 +16,10 @@ def create_user_activity_on_resume_creation(sender, instance, created, **kwargs)
             activity_type='resume_creation',
             description=f'Created resume: {instance.title}'
         )
+        # Increment template usage count
+        if instance.template_id:
+            from templates.models import Template
+            Template.objects.filter(pk=instance.template_id).update(usage_count=F('usage_count') + 1)
 
 
 @receiver(post_save, sender=Resume)

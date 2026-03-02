@@ -96,3 +96,58 @@ class ApplySuggestionSerializer(serializers.Serializer):
             return value
         except OptimizationSuggestion.DoesNotExist:
             raise serializers.ValidationError("Suggestion not found.")
+
+
+class ResumeOptimizeSerializer(serializers.Serializer):
+    """
+    Serializer for the resume optimization request.
+
+    The user can paste a full raw job posting (from LinkedIn, Indeed, etc.)
+    as ``job_description``.  ``job_title`` is optional — if omitted, the
+    parser will attempt to extract it from the raw text.
+    """
+    resume_id = serializers.IntegerField()
+    job_title = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
+    job_description = serializers.CharField()
+    auto_apply = serializers.BooleanField(default=False)
+
+    def validate_resume_id(self, value):
+        try:
+            Resume.objects.get(id=value)
+        except Resume.DoesNotExist:
+            raise serializers.ValidationError("Resume not found.")
+        return value
+
+
+class OptimizationChangeSerializer(serializers.Serializer):
+    """
+    Serializer for a single change entry in the optimization report.
+    """
+    section = serializers.CharField()
+    original = serializers.CharField()
+    modified = serializers.CharField()
+    reason = serializers.CharField()
+
+
+class ParsedJobInfoSerializer(serializers.Serializer):
+    """Metadata extracted from the raw job posting by the JD parser."""
+    detected_title = serializers.CharField(allow_null=True)
+    company = serializers.CharField(allow_null=True)
+    location = serializers.CharField(allow_null=True)
+    experience_level = serializers.CharField(allow_null=True)
+    skills_found = serializers.ListField(child=serializers.CharField())
+    requirements_count = serializers.IntegerField()
+    responsibilities_count = serializers.IntegerField()
+
+
+class OptimizedResumeSerializer(serializers.Serializer):
+    """
+    Serializer for the optimization result returned by ResumeOptimizer.
+    """
+    optimized_content = serializers.JSONField()
+    original_content = serializers.JSONField()
+    changes = OptimizationChangeSerializer(many=True)
+    score_before = serializers.IntegerField()
+    score_after = serializers.IntegerField()
+    improvement = serializers.IntegerField()
+    parsed_job_info = ParsedJobInfoSerializer(required=False)

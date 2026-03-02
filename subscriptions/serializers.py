@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import SubscriptionPlan, Subscription, Transaction, ReferralBonus
+from .models import SubscriptionPlan, Subscription, Transaction, ReferralBonus, PromotionalOffer, Invoice
 from users.serializers import UserSerializer
 
 
@@ -84,8 +84,56 @@ class ReferralBonusSerializer(serializers.ModelSerializer):
     Serializer for the ReferralBonus model.
     """
     referrer = UserSerializer(read_only=True)
-    
+
     class Meta:
         model = ReferralBonus
         fields = ('id', 'referrer', 'referral', 'subscription', 'bonus_months', 'is_applied', 'created_at')
         read_only_fields = ('id', 'referrer', 'created_at')
+
+
+class CreateOrderSerializer(serializers.Serializer):
+    """
+    Serializer for creating a Razorpay order.
+    """
+    plan_id = serializers.PrimaryKeyRelatedField(queryset=SubscriptionPlan.objects.all())
+    promo_code = serializers.CharField(required=False, allow_blank=True)
+
+
+class VerifyPaymentSerializer(serializers.Serializer):
+    """
+    Serializer for verifying a Razorpay payment.
+    """
+    razorpay_order_id = serializers.CharField()
+    razorpay_payment_id = serializers.CharField()
+    razorpay_signature = serializers.CharField()
+    subscription_id = serializers.PrimaryKeyRelatedField(queryset=Subscription.objects.all())
+
+
+class PromoCodeSerializer(serializers.Serializer):
+    """
+    Serializer for applying a promo code.
+    """
+    code = serializers.CharField()
+
+
+class PromotionalOfferSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the PromotionalOffer model.
+    """
+    class Meta:
+        model = PromotionalOffer
+        fields = (
+            'id', 'code', 'discount_percentage', 'valid_from', 'valid_until',
+            'max_uses', 'current_uses', 'applicable_plans', 'is_active',
+        )
+        read_only_fields = ('id', 'current_uses')
+
+
+class InvoiceSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Invoice model.
+    """
+    class Meta:
+        model = Invoice
+        fields = ('id', 'transaction', 'invoice_number', 'pdf_file', 'created_at')
+        read_only_fields = ('id', 'created_at')
